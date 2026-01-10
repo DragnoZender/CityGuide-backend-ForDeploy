@@ -1,269 +1,129 @@
-# 🚀 CityGuide Backend API
+# CityGuide Backend API
 
-RESTful API for CityGuide application with JWT authentication and MongoDB integration.
+A comprehensive Node.js/Express backend API for the CityGuide mobile application. This API provides authentication, place management, reviews, favorites, and admin functionality.
 
-![Node.js](https://img.shields.io/badge/node.js-v24.12.0-green)
-![Express](https://img.shields.io/badge/express-4.18.2-blue)
-![MongoDB](https://img.shields.io/badge/mongodb-atlas-green)
-![JWT](https://img.shields.io/badge/JWT-enabled-orange)
+## 🚀 Features
 
----
+### Core Features
+- **JWT Authentication** - Secure user authentication with token-based system
+- **User Management** - Registration, login, profile management
+- **Place Management** - CRUD operations for places with approval workflow
+- **Reviews & Ratings** - Users can review places, owners can reply
+- **Favorites** - Users can save favorite places
+- **Image Upload** - Support for place images with multer
+- **Search & Filter** - Search places by name, category, city with pagination
+- **Admin Dashboard** - Complete admin panel with statistics
 
-## 📋 Table of Contents
+### User Features
+- User registration and login
+- Submit places for approval
+- Edit own places (requires admin approval)
+- Delete own places
+- Add reviews and ratings
+- Reply to reviews (place owners)
+- Favorite/unfavorite places
+- View submission and update request status
 
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Installation](#installation)
-- [Environment Variables](#environment-variables)
-- [Database Setup](#database-setup)
-- [Running the Server](#running-the-server)
-- [API Endpoints](#api-endpoints)
-- [Authentication](#authentication)
-- [Testing](#testing)
-- [Project Structure](#project-structure)
+### Admin Features
+- Approve/reject place submissions
+- Approve/reject place updates
+- Manage users (ban/unban, delete)
+- View all places and delete any place
+- Dashboard with comprehensive statistics
+- View places by category and city
 
----
-
-## ✨ Features
-
-- ✅ JWT-based authentication with 7-day token expiry
-- ✅ Password hashing with bcrypt (10 salt rounds)
-- ✅ MongoDB Atlas integration for data persistence
-- ✅ RESTful API design
-- ✅ CORS enabled for cross-origin requests
-- ✅ Request logging with timestamps
-- ✅ Error handling middleware
-- ✅ Input validation
-- ✅ Pagination support
-- ✅ Search functionality
-- ✅ User-specific data isolation
-
----
-
-## 🛠️ Tech Stack
-
-- **Runtime**: Node.js v24.12.0
-- **Framework**: Express.js 4.18.2
-- **Database**: MongoDB Atlas
-- **ODM**: Mongoose 7.5.0
-- **Authentication**: jsonwebtoken 9.0.2
-- **Password Hashing**: bcryptjs 2.4.3
-- **Environment Variables**: dotenv 16.3.1
-- **CORS**: cors 2.8.5
-
----
-
-## 📦 Installation
-
-### Prerequisites
+## 📋 Prerequisites
 
 - Node.js (v14 or higher)
+- MongoDB Atlas account or local MongoDB
 - npm or yarn
-- MongoDB Atlas account
 
-### Step 1: Install Dependencies
+## 🛠️ Installation
 
+### 1. Clone the repository
+```bash
+git clone <repository-url>
+cd city_guide/backend
+```
+
+### 2. Install dependencies
 ```bash
 npm install
 ```
 
-### Step 2: Verify Installation
+### 3. Configure environment variables
 
-```bash
-npm list
-```
-
-**Expected packages**:
-```
-├── express@4.18.2
-├── mongoose@7.5.0
-├── bcryptjs@2.4.3
-├── jsonwebtoken@9.0.2
-├── dotenv@16.3.1
-└── cors@2.8.5
-```
-
----
-
-## 🔧 Environment Variables
-
-Create a `.env` file in the `backend` directory:
+Create a `.env` file in the backend directory:
 
 ```env
-PORT=8080
+# MongoDB Connection
 MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/cityguide?retryWrites=true&w=majority
-JWT_SECRET=your_secret_key_here
-TOKEN_EXPIRE=7d
+
+# JWT Secret
+JWT_SECRET=your_super_secret_jwt_key_here_change_in_production
+
+# Server Port (optional, defaults to 8080)
+PORT=8080
 ```
 
-### Variable Descriptions
+**Important:** Replace the MongoDB URI with your actual connection string.
 
-| Variable | Description | Example | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Server port number | `8080` | Yes |
-| `MONGO_URI` | MongoDB connection string | `mongodb+srv://...` | Yes |
-| `JWT_SECRET` | Secret key for JWT signing | `cityguide_secret_2024` | Yes |
-| `TOKEN_EXPIRE` | Token expiration time | `7d` | Yes |
-
-### MongoDB Atlas Setup
-
-1. **Create Account**: Sign up at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-2. **Create Cluster**: Create a free cluster
-3. **Create Database User**:
-   - Username: `your_username`
-   - Password: `your_password`
-4. **Whitelist IP**: Add `0.0.0.0/0` (allow from anywhere) or your specific IP
-5. **Get Connection String**: 
-   - Click "Connect" → "Connect your application"
-   - Copy connection string
-   - Replace `<password>` with your password
-   - Replace `<dbname>` with `cityguide`
-
-**Example Connection String**:
-```
-mongodb+srv://myuser:mypassword@cluster0.xxxxx.mongodb.net/cityguide?retryWrites=true&w=majority
-```
-
----
-
-## 🗄️ Database Setup
-
-### Seed Database
-
-Populate the database with initial place data (20 places across 5 cities):
-
+### 4. Create admin user (optional)
 ```bash
-# First time or if database is empty
-node seed-places.js
-
-# Force reseed (clears existing data and reseeds)
-node seed-places.js --force
+node create-admin.js
 ```
 
-**Seed Data Includes**:
-- **Mumbai**: 4 places (cafes, restaurants, parks)
-- **Delhi**: 4 places
-- **Bangalore**: 4 places
-- **Chennai**: 4 places
-- **Pune**: 4 places
+This creates an admin user with:
+- Email: `admin@cityguide.com`
+- Password: `admin123`
 
-**Output**:
-```
-🌱 Starting database seed...
-✅ MongoDB Connected
-📝 Inserting places...
-✅ Database seeded successfully!
-📊 Total places inserted: 20
-
-🏙️  Places by city:
-   Bangalore: 4 places
-   Chennai: 4 places
-   Delhi: 4 places
-   Mumbai: 4 places
-   Pune: 4 places
-
-🎉 Seed complete!
-```
-
-### Database Schema
-
-#### User Collection
-```javascript
-{
-  _id: ObjectId,
-  name: String (required),
-  email: String (required, unique, lowercase),
-  password: String (required, hashed with bcrypt),
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
-#### Place Collection
-```javascript
-{
-  _id: ObjectId,
-  name: String (required),
-  category: String (required, enum: ['cafe', 'restaurant', 'park', 'museum', 'shopping', 'entertainment']),
-  city: String (required),
-  rating: Number (required, 1-5),
-  description: String (required),
-  image: String (URL from Unsplash),
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
-#### Favorite Collection
-```javascript
-{
-  _id: ObjectId,
-  userId: ObjectId (ref: 'User'),
-  placeId: ObjectId (ref: 'Place'),
-  createdAt: Date,
-  updatedAt: Date
-}
-```
-
----
+**⚠️ Change these credentials in production!**
 
 ## 🚀 Running the Server
 
-### Start Production Server
-
+### Development Mode
 ```bash
 node production-server.js
 ```
 
-**Expected Output**:
-```
-==================================================
-🚀 CityGuide Production Server Started
-==================================================
-📍 Server URL: http://localhost:8080
-🏥 Health Check: http://localhost:8080/api/health
-🔐 JWT Authentication: ENABLED
-⏰ Token Expiry: 7d
-📅 Started at: 2026-01-07T05:30:00.000Z
-==================================================
-✅ MongoDB Connected Successfully
-
-📊 Database Statistics:
-👥 Registered Users: 0
-🏙️  Total Places: 20
-❤️  Total Favorites: 0
-
-Ready to accept requests! 🎉
-```
-
-### Verify Server is Running
-
+### With Auto-Restart (using nodemon)
 ```bash
-# Health check
-curl http://localhost:8080/api/health
-
-# Expected response:
-# {"success":true,"message":"CityGuide API is running!","timestamp":"2026-01-07T05:30:00.000Z"}
+npx nodemon production-server.js
 ```
 
-### Stop Server
+The server will start on `http://localhost:8080`
 
-Press `Ctrl + C` in the terminal
+## 📁 Project Structure
 
----
+```
+backend/
+├── models/                    # Mongoose models
+│   ├── User.js               # User model with authentication
+│   ├── Place.js              # Place model with reviews
+│   ├── PlaceSubmission.js    # Place submission workflow
+│   ├── PlaceUpdate.js        # Place update workflow
+│   └── Favorite.js           # User favorites
+├── uploads/                   # Uploaded images
+├── production-server.js       # Main server file (ALL ROUTES HERE)
+├── create-admin.js           # Utility to create admin user
+├── fix-zero-ratings.js       # Utility to fix rating issues
+├── package.json              # Dependencies
+├── .env                      # Environment variables (create this)
+└── README.md                 # This file
+```
 
-## 📚 API Endpoints
+## 🔌 API Endpoints
 
 ### Base URL
 ```
 http://localhost:8080/api
 ```
 
-### Authentication Endpoints (Public)
+### Authentication Endpoints
 
-#### 1. Register User
+#### Register User
 ```http
-POST /api/auth/register
+POST /auth/register
 Content-Type: application/json
 
 {
@@ -273,23 +133,9 @@ Content-Type: application/json
 }
 ```
 
-**Response (201)**:
-```json
-{
-  "success": true,
-  "message": "Registration successful",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": "677cd8af8e5f2c001f8a1234",
-    "name": "John Doe",
-    "email": "john@example.com"
-  }
-}
-```
-
-#### 2. Login User
+#### Login User
 ```http
-POST /api/auth/login
+POST /auth/login
 Content-Type: application/json
 
 {
@@ -298,451 +144,539 @@ Content-Type: application/json
 }
 ```
 
-**Response (200)**:
-```json
-{
-  "success": true,
-  "message": "Login successful",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": "677cd8af8e5f2c001f8a1234",
-    "name": "John Doe",
-    "email": "john@example.com"
-  }
-}
-```
-
-#### 3. Validate Token
+#### Verify Token
 ```http
-GET /api/auth/me
+GET /auth/me
 Authorization: Bearer <token>
 ```
 
-**Response (200)**:
-```json
-{
-  "success": true,
-  "user": {
-    "id": "677cd8af8e5f2c001f8a1234",
-    "name": "John Doe",
-    "email": "john@example.com"
-  }
-}
-```
+### Place Endpoints
 
-### Protected Endpoints (Require JWT)
-
-#### 4. Get Cities
+#### Get All Cities
 ```http
-GET /api/cities
+GET /cities
 Authorization: Bearer <token>
 ```
 
-**Response (200)**:
-```json
-{
-  "success": true,
-  "data": ["Bangalore", "Chennai", "Delhi", "Mumbai", "Pune"]
-}
-```
-
-#### 5. Get Places
+#### Get Places by City
 ```http
-GET /api/places?city=Mumbai&page=1&limit=10&sort=rating
+GET /places?city=Mumbai&page=1&limit=10&sort=rating
 Authorization: Bearer <token>
 ```
 
-**Query Parameters**:
-- `city` (optional): Filter by city name
-- `page` (optional): Page number (default: 1)
-- `limit` (optional): Items per page (default: 10)
-- `sort` (optional): Sort field (default: rating)
-
-**Response (200)**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "677cd8af8e5f2c001f8a5678",
-      "name": "Cafe Mocha",
-      "category": "cafe",
-      "city": "Mumbai",
-      "rating": 4.5,
-      "description": "Cozy coffee shop with great ambiance...",
-      "image": "https://images.unsplash.com/photo-..."
-    }
-  ],
-  "pagination": {
-    "currentPage": 1,
-    "totalPages": 2,
-    "totalItems": 4,
-    "hasNext": true,
-    "hasPrev": false
-  }
-}
-```
-
-#### 6. Search Places
+#### Search Places
 ```http
-GET /api/places/search?keyword=cafe&city=Mumbai
+GET /places/search?keyword=restaurant&city=Mumbai&minRating=4&page=1&limit=10&sort=rating
 Authorization: Bearer <token>
 ```
 
-#### 7. Get Place by ID
+#### Get Place by ID
 ```http
-GET /api/places/:id
+GET /places/:id
 Authorization: Bearer <token>
 ```
 
-#### 8. Get Favorites
+#### Submit New Place
 ```http
-GET /api/favorites
-Authorization: Bearer <token>
-```
-
-#### 9. Add to Favorites
-```http
-POST /api/favorites
+POST /submissions
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "placeId": "677cd8af8e5f2c001f8a5678"
+  "name": "Amazing Restaurant",
+  "category": "Restaurant",
+  "city": "Mumbai",
+  "description": "Great food and ambiance",
+  "address": "123 Main St, Mumbai",
+  "image": "https://example.com/image.jpg",
+  "contactNumber": "+91 1234567890",
+  "website": "https://example.com",
+  "noteForAdmin": "Please review quickly"
 }
 ```
 
-#### 10. Remove from Favorites
+#### Get My Submissions
 ```http
-DELETE /api/favorites/:id
+GET /submissions/my
 Authorization: Bearer <token>
 ```
 
-### Error Responses
+#### Get My Places (Approved)
+```http
+GET /my-places
+Authorization: Bearer <token>
+```
 
-| Status Code | Message | Description |
-|-------------|---------|-------------|
-| 400 | Bad Request | Validation errors, duplicate data |
-| 401 | Unauthorized | No token provided |
-| 403 | Forbidden | Invalid or expired token |
-| 404 | Not Found | Resource doesn't exist |
-| 500 | Internal Server Error | Server-side errors |
+#### Delete My Place
+```http
+DELETE /my-places/:id
+Authorization: Bearer <token>
+```
 
----
+#### Request Place Update
+```http
+PATCH /my-places/:id
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Updated Name",
+  "category": "Updated Category",
+  "description": "Updated description",
+  "image": "https://example.com/new-image.jpg"
+}
+```
+
+#### Get My Update Requests
+```http
+GET /my-updates
+Authorization: Bearer <token>
+```
+
+### Review Endpoints
+
+#### Add Review
+```http
+POST /places/:id/reviews
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "rating": 5,
+  "comment": "Excellent place!"
+}
+```
+
+#### Get Place Reviews
+```http
+GET /places/:id/reviews
+Authorization: Bearer <token>
+```
+
+#### Reply to Review (Owner Only)
+```http
+POST /places/:placeId/reviews/:reviewId/reply
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "reply": "Thank you for your feedback!"
+}
+```
+
+### Favorite Endpoints
+
+#### Get Favorites
+```http
+GET /favorites
+Authorization: Bearer <token>
+```
+
+#### Add to Favorites
+```http
+POST /favorites
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "placeId": "place_id_here"
+}
+```
+
+#### Remove from Favorites
+```http
+DELETE /favorites/:id
+Authorization: Bearer <token>
+```
+
+### Image Upload
+
+#### Upload Image
+```http
+POST /upload-image
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+image: <file>
+```
+
+### Admin Endpoints
+
+All admin endpoints require admin role.
+
+#### Get Dashboard Stats
+```http
+GET /admin/stats
+Authorization: Bearer <admin_token>
+```
+
+#### Get All Users
+```http
+GET /admin/users
+Authorization: Bearer <admin_token>
+```
+
+#### Update User Status (Ban/Unban)
+```http
+PATCH /admin/users/:id
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+```
+
+#### Delete User
+```http
+DELETE /admin/users/:id
+Authorization: Bearer <admin_token>
+```
+
+#### Get All Submissions
+```http
+GET /admin/submissions?status=pending
+Authorization: Bearer <admin_token>
+```
+
+#### Review Submission (Approve/Reject)
+```http
+PATCH /admin/submissions/:id
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+{
+  "status": "approved",
+  "adminNotes": "Looks good!"
+}
+```
+
+#### Get All Update Requests
+```http
+GET /admin/updates?status=pending
+Authorization: Bearer <admin_token>
+```
+
+#### Review Update Request
+```http
+PATCH /admin/updates/:id
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+{
+  "status": "approved",
+  "adminNotes": "Changes approved"
+}
+```
+
+#### Get All Places
+```http
+GET /admin/places
+Authorization: Bearer <admin_token>
+```
+
+#### Delete Any Place
+```http
+DELETE /admin/places/:id
+Authorization: Bearer <admin_token>
+```
+
+## 🗄️ Database Models
+
+### User Model
+```javascript
+{
+  name: String,
+  email: String (unique),
+  password: String (hashed),
+  role: String (default: 'user'),
+  isActive: Boolean (default: true),
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Place Model
+```javascript
+{
+  name: String,
+  category: String,
+  city: String,
+  rating: Number (default: 0),
+  description: String,
+  image: String,
+  address: String,
+  contactNumber: String,
+  website: String,
+  ownerId: ObjectId (ref: User),
+  reviews: [{
+    userId: ObjectId,
+    userName: String,
+    rating: Number,
+    comment: String,
+    createdAt: Date,
+    ownerReply: String,
+    ownerReplyAt: Date
+  }],
+  totalReviews: Number,
+  averageRating: Number,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### PlaceSubmission Model
+```javascript
+{
+  name: String,
+  category: String,
+  city: String,
+  description: String,
+  image: String,
+  address: String,
+  contactNumber: String,
+  website: String,
+  noteForAdmin: String,
+  submittedBy: ObjectId (ref: User),
+  status: String (pending/approved/rejected),
+  adminNotes: String,
+  reviewedBy: ObjectId (ref: User),
+  reviewedAt: Date,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### PlaceUpdate Model
+```javascript
+{
+  placeId: ObjectId (ref: Place),
+  placeName: String,
+  submittedBy: ObjectId (ref: User),
+  updates: {
+    name: String,
+    category: String,
+    description: String,
+    image: String,
+    address: String,
+    contactNumber: String,
+    website: String
+  },
+  status: String (pending/approved/rejected),
+  adminNotes: String,
+  reviewedBy: ObjectId (ref: User),
+  reviewedAt: Date,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Favorite Model
+```javascript
+{
+  userId: ObjectId (ref: User),
+  placeId: ObjectId (ref: Place),
+  createdAt: Date
+}
+```
 
 ## 🔐 Authentication
 
-### JWT Token Structure
+The API uses JWT (JSON Web Tokens) for authentication.
 
-**Header**:
-```json
-{
-  "alg": "HS256",
-  "typ": "JWT"
-}
+### Token Format
 ```
-
-**Payload**:
-```json
-{
-  "userId": "677cd8af8e5f2c001f8a1234",
-  "email": "john@example.com",
-  "name": "John Doe",
-  "iat": 1736226680,
-  "exp": 1736831480
-}
-```
-
-**Signature**: HMACSHA256(header + payload, JWT_SECRET)
-
-### Token Usage
-
-**In Request Headers**:
-```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Authorization: Bearer <your_jwt_token>
 ```
 
 ### Token Expiry
+Tokens expire after 7 days by default.
 
-- **Duration**: 7 days (configurable via TOKEN_EXPIRE)
-- **After Expiry**: User must login again
-- **Error**: `403 Forbidden - Invalid or expired token`
+### Protected Routes
+All routes except `/auth/register`, `/auth/login`, and `/health` require authentication.
 
-### Password Security
+### Admin Routes
+Routes under `/admin/*` require admin role.
 
-- **Hashing**: bcrypt with 10 salt rounds
-- **Storage**: Only hashed passwords stored in database
-- **Validation**: bcrypt.compare() for login
-- **Plain Text**: Never stored or transmitted
+## 🛡️ Security Features
 
----
+- **Password Hashing** - bcryptjs with salt rounds
+- **JWT Authentication** - Secure token-based auth
+- **Role-Based Access Control** - Admin vs User permissions
+- **Ban System** - Admins can ban users
+- **Input Validation** - Server-side validation
+- **CORS Enabled** - Cross-origin requests allowed
+- **File Upload Limits** - 5MB max file size
+- **Image Type Validation** - Only image files allowed
 
-## 🧪 Testing
+## 📊 Available Cities
 
-### Using Postman
+The app supports 10 Indian cities:
+1. Mumbai
+2. Delhi
+3. Bangalore
+4. Chennai
+5. Kolkata
+6. Hyderabad
+7. Pune
+8. Ahmedabad
+9. Jaipur
+10. Lucknow
 
-1. **Import Collection**: `CityGuide-API.postman_collection.json`
-2. **Import Environment**: `CityGuide-Local.postman_environment.json`
-3. **Select Environment**: "CityGuide Local"
-4. **Run Tests**: Start with "Register User" or "Login User"
+## 📝 Available Categories
 
-### Using curl
+15 place categories:
+1. Restaurant
+2. Cafe
+3. Park
+4. Museum
+5. Shopping Mall
+6. Hotel
+7. Tourist Attraction
+8. Temple
+9. Beach
+10. Market
+11. Theater
+12. Library
+13. Hospital
+14. School
+15. Gym
 
+## 🔧 Utility Scripts
+
+### Create Admin User
 ```bash
-# Register
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test User","email":"test@example.com","password":"test123"}'
-
-# Login
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"test123"}'
-
-# Get Cities (replace <token> with actual token)
-curl http://localhost:8080/api/cities \
-  -H "Authorization: Bearer <token>"
+node create-admin.js
 ```
+Creates an admin user with default credentials.
 
-### Using HTML Test Page
-
-Open `test-jwt.html` in browser for interactive testing.
-
----
-
-## 📁 Project Structure
-
+### Fix Zero Ratings
+```bash
+node fix-zero-ratings.js
 ```
-backend/
-├── config/
-│   └── db.js                    # MongoDB connection
-├── controllers/
-│   ├── auth.controller.js       # Authentication logic
-│   ├── city.controller.js       # City operations
-│   ├── place.controller.js      # Place operations
-│   └── favorite.controller.js   # Favorite operations
-├── middleware/
-│   └── auth.middleware.js       # JWT validation middleware
-├── models/
-│   ├── User.js                  # User schema
-│   ├── Place.js                 # Place schema
-│   └── Favorite.js              # Favorite schema
-├── routes/
-│   ├── auth.routes.js           # Auth routes
-│   ├── city.routes.js           # City routes
-│   ├── place.routes.js          # Place routes
-│   └── favorite.routes.js       # Favorite routes
-├── .env                         # Environment variables (create this)
-├── .gitignore                   # Git ignore file
-├── production-server.js         # Main server file (MongoDB + JWT)
-├── seed-places.js               # Database seeding script
-├── test-jwt.html                # Interactive API testing page
-├── package.json                 # Dependencies
-└── README.md                    # This file
-```
-
----
-
-## 🔍 Logging
-
-### Request Logging
-```
-📨 POST /api/auth/login - 2026-01-07T05:30:00.000Z
-```
-
-### Authentication Logging
-```
-🔐 Login attempt: john@example.com
-✅ User logged in successfully: john@example.com
-```
-
-### Error Logging
-```
-❌ Login error: Invalid email or password
-❌ No token provided
-❌ Invalid token: jwt malformed
-```
-
-### Database Logging
-```
-✅ MongoDB Connected Successfully
-📊 Database Statistics:
-👥 Registered Users: 3
-🏙️  Total Places: 20
-❤️  Total Favorites: 5
-```
-
----
+Fixes places that have 0 reviews but non-zero ratings.
 
 ## 🐛 Troubleshooting
 
-### Issue: MongoDB Connection Failed
-
-**Error**: `❌ MongoDB Connection Error: ...`
-
-**Solutions**:
-1. Check MONGO_URI in `.env` file
-2. Verify MongoDB Atlas IP whitelist
-3. Ensure database user credentials are correct
-4. Check network connectivity
-
-### Issue: Port Already in Use
-
-**Error**: `Error: listen EADDRINUSE: address already in use :::8080`
-
-**Solutions**:
-```bash
-# Windows
-netstat -ano | findstr :8080
-taskkill /F /PID <PID>
-
-# Linux/Mac
-lsof -ti:8080 | xargs kill -9
+### MongoDB Connection Error
 ```
+Error: MongooseServerSelectionError
+```
+**Solution:** Check your MongoDB URI in `.env` file and ensure your IP is whitelisted in MongoDB Atlas.
 
-### Issue: JWT Token Invalid
+### Port Already in Use
+```
+Error: listen EADDRINUSE: address already in use :::8080
+```
+**Solution:** Change the port in `.env` or kill the process using port 8080.
 
-**Error**: `❌ Invalid token: jwt malformed`
+### JWT Token Invalid
+```
+Error: Invalid or expired token
+```
+**Solution:** Login again to get a new token.
 
-**Solutions**:
-1. Ensure token is sent in Authorization header
-2. Format: `Bearer <token>`
-3. Check JWT_SECRET matches between registration and validation
-4. Verify token hasn't expired (7 days)
+### Image Upload Error
+```
+Error: File too large
+```
+**Solution:** Ensure image is under 5MB.
 
-### Issue: Seed Script Fails
+## 📈 Performance
 
-**Error**: Database connection or insertion error
-
-**Solutions**:
-1. Ensure MongoDB is connected
-2. Check MONGO_URI in `.env`
-3. Use `--force` flag to clear and reseed
-4. Verify network connectivity
-
----
-
-## 📖 Additional Documentation
-
-- **[JWT-IMPLEMENTATION.md](JWT-IMPLEMENTATION.md)** - JWT authentication details
-- **[MONGODB-INTEGRATION.md](../MONGODB-INTEGRATION.md)** - Database integration guide
-- **[POSTMAN-API-DOCUMENTATION.md](../POSTMAN-API-DOCUMENTATION.md)** - Complete API reference
-- **[JWT-TEST-REPORT.md](../JWT-TEST-REPORT.md)** - Authentication test results
-
----
+- **Pagination** - All list endpoints support pagination
+- **Indexing** - MongoDB indexes on frequently queried fields
+- **Caching** - Consider adding Redis for production
+- **Image Optimization** - Consider using CDN for images
 
 ## 🚀 Deployment
 
-### Heroku Deployment
-
-```bash
-# Login to Heroku
-heroku login
-
-# Create app
-heroku create cityguide-api
-
-# Set environment variables
-heroku config:set JWT_SECRET=your_secret_key
-heroku config:set MONGO_URI=your_mongodb_uri
-heroku config:set TOKEN_EXPIRE=7d
-
-# Deploy
-git push heroku main
-
-# View logs
-heroku logs --tail
-```
-
 ### Environment Variables for Production
-
-```bash
-heroku config:set PORT=8080
-heroku config:set JWT_SECRET=<strong-secret-key>
-heroku config:set MONGO_URI=<mongodb-atlas-uri>
-heroku config:set TOKEN_EXPIRE=7d
-heroku config:set NODE_ENV=production
+```env
+MONGO_URI=<production_mongodb_uri>
+JWT_SECRET=<strong_random_secret>
+PORT=8080
+NODE_ENV=production
 ```
 
----
+### Recommended Hosting
+- **Backend**: Heroku, Railway, Render, DigitalOcean
+- **Database**: MongoDB Atlas
+- **Images**: AWS S3, Cloudinary, or similar CDN
 
-## 📝 Scripts
+### Production Checklist
+- [ ] Change admin credentials
+- [ ] Use strong JWT secret
+- [ ] Enable HTTPS
+- [ ] Set up proper CORS
+- [ ] Add rate limiting
+- [ ] Set up logging
+- [ ] Configure error monitoring
+- [ ] Set up backups
+- [ ] Use environment variables
+- [ ] Remove console.logs
 
-```json
-{
-  "scripts": {
-    "start": "node production-server.js",
-    "dev": "nodemon production-server.js",
-    "seed": "node seed-places.js",
-    "seed:force": "node seed-places.js --force"
-  }
-}
-```
+## 📚 Dependencies
 
-**Usage**:
-```bash
-npm start              # Start production server
-npm run dev            # Start with nodemon (auto-restart)
-npm run seed           # Seed database
-npm run seed:force     # Force reseed
-```
+### Core Dependencies
+- **express** - Web framework
+- **mongoose** - MongoDB ODM
+- **jsonwebtoken** - JWT authentication
+- **bcryptjs** - Password hashing
+- **cors** - CORS middleware
+- **dotenv** - Environment variables
+- **multer** - File upload handling
 
----
-
-## 🔒 Security Best Practices
-
-1. ✅ **Environment Variables**: Never commit `.env` file
-2. ✅ **JWT Secret**: Use strong, random secret key
-3. ✅ **Password Hashing**: bcrypt with 10 salt rounds
-4. ✅ **Token Expiry**: Set appropriate expiration time
-5. ✅ **Input Validation**: Validate all user inputs
-6. ✅ **CORS**: Configure for specific origins in production
-7. ✅ **HTTPS**: Use HTTPS in production
-8. ✅ **Rate Limiting**: Implement rate limiting for production
-
----
-
-## 📊 Performance
-
-### Response Times (Average)
-- Registration: ~150ms
-- Login: ~120ms
-- Token Validation: ~50ms
-- Get Places: ~80ms
-- Search: ~100ms
-
-### Database Queries
-- Optimized with indexes
-- Pagination for large datasets
-- Efficient population for favorites
-
----
+### Dev Dependencies
+- **nodemon** - Auto-restart server
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create feature branch
-3. Commit changes
-4. Push to branch
-5. Open Pull Request
-
----
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## 📄 License
 
-MIT License
-
----
+This project is licensed under the MIT License.
 
 ## 👥 Support
 
-For issues and questions:
-- Check documentation files
-- Review test reports
-- Create GitHub issue
+For issues or questions:
+- Create an issue in the repository
+- Contact the development team
+
+## 🔄 Version History
+
+### v1.0.0 (Current)
+- Initial release
+- Complete authentication system
+- Place management with approval workflow
+- Reviews and ratings
+- Favorites system
+- Admin dashboard
+- Image upload
+- Search and filter
+
+## 🎯 Future Enhancements
+
+- [ ] Email notifications
+- [ ] SMS notifications
+- [ ] Social media login
+- [ ] Advanced search filters
+- [ ] Place recommendations
+- [ ] User profiles with avatars
+- [ ] Place photos gallery
+- [ ] Booking system
+- [ ] Payment integration
+- [ ] Analytics dashboard
+- [ ] Export data functionality
+- [ ] API rate limiting
+- [ ] Caching with Redis
+- [ ] WebSocket for real-time updates
 
 ---
 
-**Built with ❤️ using Node.js and Express**
-
-*Last Updated: January 7, 2026*
+**Made with ❤️ for CityGuide**

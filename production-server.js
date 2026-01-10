@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -14,15 +17,73 @@ const MONGO_URI = process.env.MONGO_URI;
 const User = require('./models/User');
 const Place = require('./models/Place');
 const Favorite = require('./models/Favorite');
+const PlaceSubmission = require('./models/PlaceSubmission');
+const PlaceUpdate = require('./models/PlaceUpdate');
+
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('📁 Created uploads directory');
+}
+
+// Configure multer for image uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'place-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  // Accept images only
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed!'), false);
+  }
+};
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
 
 // Enable CORS
 app.use(cors());
 app.use(express.json());
 
+// Serve uploaded images statically
+app.use('/uploads', express.static(uploadsDir));
+
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`📨 ${req.method} ${req.path} - ${new Date().toISOString()}`);
   next();
+});
+
+// Multer error handling middleware
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    console.error('❌ Multer error:', error);
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File too large. Maximum size is 5MB.'
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+  next(error);
 });
 
 // Connect to MongoDB
@@ -37,7 +98,7 @@ mongoose.connect(MONGO_URI)
 // ============================================
 // JWT MIDDLEWARE
 // ============================================
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
@@ -51,6 +112,25 @@ const authenticateToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Check if user is banned
+    const user = await User.findById(decoded.userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    if (user.isActive === false) {
+      console.log(`🚫 Banned user attempted access: ${user.email}`);
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been banned. Please contact support.'
+      });
+    }
+    
     req.user = decoded;
     console.log(`✅ Token verified for user: ${decoded.email}`);
     next();
@@ -59,6 +139,35 @@ const authenticateToken = (req, res, next) => {
     return res.status(403).json({
       success: false,
       message: 'Invalid or expired token'
+    });
+  }
+};
+
+// Admin middleware
+const adminMiddleware = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    if (user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+    
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
     });
   }
 };
@@ -119,7 +228,8 @@ app.post('/api/auth/register', async (req, res) => {
       { 
         userId: user._id, 
         email: user.email,
-        name: user.name
+        name: user.name,
+        role: user.role
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRY }
@@ -134,7 +244,8 @@ app.post('/api/auth/register', async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        role: user.role
       }
     });
   } catch (error) {
@@ -186,7 +297,8 @@ app.post('/api/auth/login', async (req, res) => {
       { 
         userId: user._id, 
         email: user.email,
-        name: user.name
+        name: user.name,
+        role: user.role
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRY }
@@ -201,7 +313,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        role: user.role
       }
     });
   } catch (error) {
@@ -230,7 +343,8 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        role: user.role
       }
     });
   } catch (error) {
@@ -314,8 +428,8 @@ app.get('/api/places', authenticateToken, async (req, res) => {
 // Search places
 app.get('/api/places/search', authenticateToken, async (req, res) => {
   try {
-    const { keyword, city } = req.query;
-    console.log(`🔍 Search for "${keyword}" in ${city || 'all cities'} by:`, req.user.email);
+    const { keyword, city, minRating, page = 1, limit = 10, sort = 'rating' } = req.query;
+    console.log(`🔍 Search for "${keyword}" in ${city || 'all cities'} with minRating ${minRating || 'any'} sorted by ${sort} by:`, req.user.email);
     
     // Build query
     const query = {
@@ -326,23 +440,40 @@ app.get('/api/places/search', authenticateToken, async (req, res) => {
       ]
     };
     
+    // Filter by city if provided
     if (city) {
       query.city = city;
     }
     
-    const searchResults = await Place.find(query).sort({ rating: -1 });
+    // Filter by minimum rating if provided
+    if (minRating) {
+      query.rating = { $gte: parseFloat(minRating) };
+    }
     
-    console.log(`✅ Found ${searchResults.length} results for "${keyword}"`);
+    // Build sort object
+    const sortObj = {};
+    sortObj[sort] = -1; // Descending order
+    
+    // Get paginated results
+    const searchResults = await Place.find(query)
+      .sort(sortObj)
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit));
+    
+    const totalResults = await Place.countDocuments(query);
+    const totalPages = Math.ceil(totalResults / parseInt(limit));
+    
+    console.log(`✅ Found ${searchResults.length} results (page ${page}/${totalPages}) for "${keyword}"`);
     
     res.json({
       success: true,
       data: searchResults,
       pagination: {
-        currentPage: 1,
-        totalPages: 1,
-        totalItems: searchResults.length,
-        hasNext: false,
-        hasPrev: false
+        currentPage: parseInt(page),
+        totalPages,
+        totalItems: totalResults,
+        hasNext: parseInt(page) < totalPages,
+        hasPrev: parseInt(page) > 1
       }
     });
   } catch (error) {
@@ -494,6 +625,834 @@ app.delete('/api/favorites/:id', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Remove favorite error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// ============================================
+// IMAGE UPLOAD ROUTES
+// ============================================
+
+// Upload image endpoint
+app.post('/api/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    console.log('📤 Image upload request received from:', req.user.email);
+    
+    if (!req.file) {
+      console.log('❌ No file in request');
+      return res.status(400).json({
+        success: false,
+        message: 'No image file provided'
+      });
+    }
+    
+    console.log('📁 File details:', {
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
+    
+    // Generate the URL for the uploaded image
+    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    
+    console.log('✅ Image uploaded successfully:', imageUrl);
+    
+    res.json({
+      success: true,
+      message: 'Image uploaded successfully',
+      imageUrl: imageUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error('❌ Image upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error uploading image'
+    });
+  }
+});
+
+// ============================================
+// PLACE SUBMISSION ROUTES
+// ============================================
+
+// Submit a new place
+app.post('/api/submissions', authenticateToken, async (req, res) => {
+  try {
+    const { name, category, city, description, address, image, contactNumber, website, noteForAdmin } = req.body;
+    
+    console.log('📝 Place submission by:', req.user.email);
+    
+    // Validation
+    if (!name || !category || !city || !description || !address) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields'
+      });
+    }
+    
+    const submission = await PlaceSubmission.create({
+      name,
+      category,
+      city,
+      description,
+      address,
+      image: image || 'https://via.placeholder.com/400x300?text=Place+Image',
+      contactNumber,
+      website,
+      noteForAdmin,
+      submittedBy: req.user.userId,
+      status: 'pending'
+    });
+    
+    console.log('✅ Place submitted successfully:', submission.name);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Place submitted successfully. Awaiting admin approval.',
+      data: submission
+    });
+  } catch (error) {
+    console.error('❌ Place submission error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Get user's submissions
+app.get('/api/submissions/my', authenticateToken, async (req, res) => {
+  try {
+    console.log('📋 User submissions requested by:', req.user.email);
+    
+    const submissions = await PlaceSubmission.find({ submittedBy: req.user.userId })
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: submissions
+    });
+  } catch (error) {
+    console.error('❌ Get submissions error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Get available cities for submission
+app.get('/api/submissions/cities', authenticateToken, async (req, res) => {
+  try {
+    const cities = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Kolkata', 'Hyderabad', 'Pune', 'Ahmedabad', 'Jaipur', 'Lucknow'];
+    
+    res.json({
+      success: true,
+      data: cities
+    });
+  } catch (error) {
+    console.error('❌ Get cities error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// ============================================
+// ADMIN ROUTES
+// ============================================
+
+// Get all users (Admin only)
+app.get('/api/admin/users', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    console.log('👥 Admin users list requested by:', req.user.email);
+    
+    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    console.error('❌ Get users error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Update user status (Admin only)
+app.patch('/api/admin/users/:id', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    const { isActive, role } = req.body;
+    console.log(`👤 Admin updating user ${req.params.id} by:`, req.user.email);
+    
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { isActive, role },
+      { new: true }
+    ).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'User updated successfully',
+      data: user
+    });
+  } catch (error) {
+    console.error('❌ Update user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Delete user (Admin only)
+app.delete('/api/admin/users/:id', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    console.log(`🗑️ Admin deleting user ${req.params.id} by:`, req.user.email);
+    
+    // Prevent deleting yourself
+    if (req.params.id === req.user.userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot delete your own account'
+      });
+    }
+    
+    const user = await User.findByIdAndDelete(req.params.id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Also delete user's submissions and favorites
+    await PlaceSubmission.deleteMany({ submittedBy: req.params.id });
+    await Favorite.deleteMany({ userId: req.params.id });
+    
+    res.json({
+      success: true,
+      message: 'User deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Delete user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Get all place submissions (Admin only)
+app.get('/api/admin/submissions', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    const { status } = req.query;
+    console.log('📋 Admin submissions list requested by:', req.user.email);
+    
+    const query = status ? { status } : {};
+    const submissions = await PlaceSubmission.find(query)
+      .populate('submittedBy', 'name email')
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: submissions
+    });
+  } catch (error) {
+    console.error('❌ Get submissions error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Review place submission (Admin only)
+app.patch('/api/admin/submissions/:id', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    const { status, adminNotes } = req.body;
+    console.log(`📝 Admin reviewing submission ${req.params.id} by:`, req.user.email);
+    
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be approved or rejected.'
+      });
+    }
+    
+    const submission = await PlaceSubmission.findByIdAndUpdate(
+      req.params.id,
+      {
+        status,
+        adminNotes,
+        reviewedBy: req.user.userId,
+        reviewedAt: new Date()
+      },
+      { new: true }
+    ).populate('submittedBy', 'name email');
+    
+    if (!submission) {
+      return res.status(404).json({
+        success: false,
+        message: 'Submission not found'
+      });
+    }
+    
+    // If approved, create the place
+    if (status === 'approved') {
+      await Place.create({
+        name: submission.name,
+        category: submission.category,
+        city: submission.city,
+        rating: 0, // No rating until first review
+        description: submission.description,
+        image: submission.image,
+        address: submission.address,
+        contactNumber: submission.contactNumber,
+        website: submission.website,
+        ownerId: submission.submittedBy, // Set owner
+        reviews: [],
+        totalReviews: 0,
+        averageRating: 0 // No rating until first review
+      });
+      console.log('✅ Place approved and added to database:', submission.name);
+    }
+    
+    res.json({
+      success: true,
+      message: `Submission ${status} successfully`,
+      data: submission
+    });
+  } catch (error) {
+    console.error('❌ Review submission error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Get admin dashboard stats
+app.get('/api/admin/stats', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    console.log('📊 Admin stats requested by:', req.user.email);
+    
+    const totalUsers = await User.countDocuments();
+    const activeUsers = await User.countDocuments({ isActive: true });
+    const bannedUsers = await User.countDocuments({ isActive: false });
+    const totalPlaces = await Place.countDocuments();
+    const pendingSubmissions = await PlaceSubmission.countDocuments({ status: 'pending' });
+    const approvedSubmissions = await PlaceSubmission.countDocuments({ status: 'approved' });
+    const rejectedSubmissions = await PlaceSubmission.countDocuments({ status: 'rejected' });
+    const pendingUpdates = await PlaceUpdate.countDocuments({ status: 'pending' });
+    
+    // Get places by category
+    const placesByCategory = await Place.aggregate([
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
+    ]);
+    
+    // Get places by city
+    const placesByCity = await Place.aggregate([
+      {
+        $group: {
+          _id: '$city',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      }
+    ]);
+    
+    res.json({
+      success: true,
+      data: {
+        totalUsers,
+        activeUsers,
+        bannedUsers,
+        totalPlaces,
+        pendingSubmissions,
+        approvedSubmissions,
+        rejectedSubmissions,
+        pendingUpdates,
+        placesByCategory,
+        placesByCity
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Get all place update requests (Admin only)
+app.get('/api/admin/updates', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    const { status } = req.query;
+    console.log('📝 Admin update requests list by:', req.user.email);
+    
+    const query = status ? { status } : {};
+    const updates = await PlaceUpdate.find(query)
+      .populate('submittedBy', 'name email')
+      .populate('placeId')
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: updates
+    });
+  } catch (error) {
+    console.error('❌ Get updates error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Review place update request (Admin only)
+app.patch('/api/admin/updates/:id', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    const { status, adminNotes } = req.body;
+    console.log(`📝 Admin reviewing update ${req.params.id} by:`, req.user.email);
+    
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be approved or rejected.'
+      });
+    }
+    
+    const updateRequest = await PlaceUpdate.findByIdAndUpdate(
+      req.params.id,
+      {
+        status,
+        adminNotes,
+        reviewedBy: req.user.userId,
+        reviewedAt: new Date()
+      },
+      { new: true }
+    ).populate('placeId');
+    
+    if (!updateRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'Update request not found'
+      });
+    }
+    
+    // If approved, apply the updates to the place
+    if (status === 'approved') {
+      const place = await Place.findById(updateRequest.placeId);
+      if (place) {
+        if (updateRequest.updates.name) place.name = updateRequest.updates.name;
+        if (updateRequest.updates.category) place.category = updateRequest.updates.category;
+        if (updateRequest.updates.description) place.description = updateRequest.updates.description;
+        if (updateRequest.updates.image) place.image = updateRequest.updates.image;
+        if (updateRequest.updates.address !== undefined) place.address = updateRequest.updates.address;
+        if (updateRequest.updates.contactNumber !== undefined) place.contactNumber = updateRequest.updates.contactNumber;
+        if (updateRequest.updates.website !== undefined) place.website = updateRequest.updates.website;
+        
+        await place.save();
+        console.log('✅ Place updated successfully:', place.name);
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `Update request ${status} successfully`,
+      data: updateRequest
+    });
+  } catch (error) {
+    console.error('❌ Review update error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Get all places (Admin only)
+app.get('/api/admin/places', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    console.log('🏙️ Admin places list requested by:', req.user.email);
+    
+    const places = await Place.find()
+      .populate('ownerId', 'name email')
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: places
+    });
+  } catch (error) {
+    console.error('❌ Get places error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Delete place (Admin only)
+app.delete('/api/admin/places/:id', authenticateToken, adminMiddleware, async (req, res) => {
+  try {
+    console.log(`🗑️ Admin deleting place ${req.params.id} by:`, req.user.email);
+    
+    const place = await Place.findByIdAndDelete(req.params.id);
+    
+    if (!place) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    // Also delete related favorites
+    await Favorite.deleteMany({ placeId: req.params.id });
+    
+    res.json({
+      success: true,
+      message: 'Place deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Delete place error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// ============================================
+// USER PROPERTY ROUTES (My Places)
+// ============================================
+
+// Get user's owned places (approved submissions)
+app.get('/api/my-places', authenticateToken, async (req, res) => {
+  try {
+    console.log('🏠 My places requested by:', req.user.email);
+    
+    const myPlaces = await Place.find({ ownerId: req.user.userId })
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: myPlaces
+    });
+  } catch (error) {
+    console.error('❌ Get my places error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Update user's place
+app.patch('/api/my-places/:id', authenticateToken, async (req, res) => {
+  try {
+    const { name, category, description, image } = req.body;
+    console.log(`✏️ Update request for place ${req.params.id} by:`, req.user.email);
+    
+    const place = await Place.findOne({
+      _id: req.params.id,
+      ownerId: req.user.userId
+    });
+    
+    if (!place) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found or you do not have permission to edit'
+      });
+    }
+    
+    // Create update request instead of directly updating
+    const updateRequest = await PlaceUpdate.create({
+      placeId: req.params.id,
+      placeName: place.name,
+      submittedBy: req.user.userId,
+      updates: {
+        name: name || place.name,
+        category: category || place.category,
+        description: description || place.description,
+        image: image || place.image
+      },
+      status: 'pending'
+    });
+    
+    console.log('✅ Update request submitted for admin approval');
+    
+    res.json({
+      success: true,
+      message: 'Update request submitted for admin approval',
+      data: updateRequest
+    });
+  } catch (error) {
+    console.error('❌ Update place error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Get user's update requests
+app.get('/api/my-updates', authenticateToken, async (req, res) => {
+  try {
+    console.log('📝 My update requests by:', req.user.email);
+    
+    const updates = await PlaceUpdate.find({ submittedBy: req.user.userId })
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: updates
+    });
+  } catch (error) {
+    console.error('❌ Get updates error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// ============================================
+// REVIEW ROUTES
+// ============================================
+
+// Add review to a place
+app.post('/api/places/:id/reviews', authenticateToken, async (req, res) => {
+  try {
+    const { rating, comment } = req.body;
+    const placeId = req.params.id;
+    
+    console.log(`⭐ Add review to place ${placeId} by:`, req.user.email);
+    
+    if (!rating || !comment) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating and comment are required'
+      });
+    }
+    
+    if (rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating must be between 1 and 5'
+      });
+    }
+    
+    const place = await Place.findById(placeId);
+    
+    if (!place) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    // Check if user already reviewed
+    const existingReview = place.reviews.find(
+      review => review.userId.toString() === req.user.userId
+    );
+    
+    if (existingReview) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already reviewed this place'
+      });
+    }
+    
+    // Get user info
+    const user = await User.findById(req.user.userId);
+    
+    // Add review
+    place.reviews.push({
+      userId: req.user.userId,
+      userName: user.name,
+      rating: parseInt(rating),
+      comment: comment.trim(),
+      createdAt: new Date()
+    });
+    
+    // Update average rating and total reviews
+    place.totalReviews = place.reviews.length;
+    const totalRating = place.reviews.reduce((sum, review) => sum + review.rating, 0);
+    place.averageRating = totalRating / place.totalReviews;
+    place.rating = place.averageRating; // Update main rating field
+    
+    await place.save();
+    
+    console.log('✅ Review added successfully');
+    
+    res.json({
+      success: true,
+      message: 'Review added successfully',
+      data: place
+    });
+  } catch (error) {
+    console.error('❌ Add review error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Get reviews for a place
+app.get('/api/places/:id/reviews', authenticateToken, async (req, res) => {
+  try {
+    const place = await Place.findById(req.params.id);
+    
+    if (!place) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        reviews: place.reviews,
+        totalReviews: place.totalReviews,
+        averageRating: place.averageRating
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get reviews error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Owner reply to review
+app.post('/api/places/:placeId/reviews/:reviewId/reply', authenticateToken, async (req, res) => {
+  try {
+    const { placeId, reviewId } = req.params;
+    const { reply } = req.body;
+    
+    console.log(`💬 Owner reply to review ${reviewId} on place ${placeId} by:`, req.user.email);
+    
+    if (!reply || reply.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply text is required'
+      });
+    }
+    
+    const place = await Place.findById(placeId);
+    
+    if (!place) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found'
+      });
+    }
+    
+    // Check if user is the owner
+    if (place.ownerId.toString() !== req.user.userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the place owner can reply to reviews'
+      });
+    }
+    
+    // Find the review
+    const review = place.reviews.id(reviewId);
+    
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found'
+      });
+    }
+    
+    // Add or update reply
+    review.ownerReply = reply.trim();
+    review.ownerReplyAt = new Date();
+    
+    await place.save();
+    
+    console.log('✅ Owner reply added successfully');
+    
+    res.json({
+      success: true,
+      message: 'Reply added successfully',
+      data: place
+    });
+  } catch (error) {
+    console.error('❌ Add reply error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
+// Owner delete their place
+app.delete('/api/my-places/:id', authenticateToken, async (req, res) => {
+  try {
+    const placeId = req.params.id;
+    console.log(`🗑️ Owner deleting place ${placeId} by:`, req.user.email);
+    
+    const place = await Place.findOne({
+      _id: placeId,
+      ownerId: req.user.userId
+    });
+    
+    if (!place) {
+      return res.status(404).json({
+        success: false,
+        message: 'Place not found or you do not have permission to delete'
+      });
+    }
+    
+    // Delete the place
+    await Place.findByIdAndDelete(placeId);
+    
+    // Also delete related favorites
+    await Favorite.deleteMany({ placeId: placeId });
+    
+    console.log('✅ Place deleted successfully by owner');
+    
+    res.json({
+      success: true,
+      message: 'Place deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Delete place error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error'

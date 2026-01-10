@@ -9,7 +9,7 @@ const placeSchema = new mongoose.Schema({
   category: {
     type: String,
     required: [true, 'Category is required'],
-    enum: ['cafe', 'restaurant', 'park', 'museum', 'shopping', 'entertainment']
+    trim: true
   },
   city: {
     type: String,
@@ -19,9 +19,9 @@ const placeSchema = new mongoose.Schema({
   rating: {
     type: Number,
     required: [true, 'Rating is required'],
-    min: 1,
+    min: 0,
     max: 5,
-    default: 4.0
+    default: 0
   },
   description: {
     type: String,
@@ -30,6 +30,63 @@ const placeSchema = new mongoose.Schema({
   image: {
     type: String,
     default: 'https://via.placeholder.com/300x200'
+  },
+  address: {
+    type: String,
+    trim: true
+  },
+  contactNumber: {
+    type: String,
+    trim: true
+  },
+  website: {
+    type: String,
+    trim: true
+  },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  reviews: [{
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    userName: {
+      type: String,
+      required: true
+    },
+    rating: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 5
+    },
+    comment: {
+      type: String,
+      required: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    },
+    ownerReply: {
+      type: String,
+      default: null
+    },
+    ownerReplyAt: {
+      type: Date,
+      default: null
+    }
+  }],
+  totalReviews: {
+    type: Number,
+    default: 0
+  },
+  averageRating: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true
