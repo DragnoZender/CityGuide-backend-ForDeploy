@@ -77,7 +77,7 @@ const sendOTPEmail = async (email, name, otp) => {
 
       const msg = {
         to: email,
-        from: process.env.SENDGRID_FROM_EMAIL, // MUST be VERIFIED
+        from: process.env.SENDGRID_FROM_EMAIL.trim(), // MUST be VERIFIED
         subject: 'Verify Your CityGuide Account',
         text: `Your OTP is ${otp}. It expires in 10 minutes.`,
         html: htmlTemplate,
