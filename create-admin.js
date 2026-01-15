@@ -24,7 +24,8 @@ async function createAdmin() {
       name: 'Admin User',
       email: 'admin@cityguide.com',
       password: 'admin123', // Will be hashed by pre-save hook
-      role: 'admin'
+      role: 'admin',
+      isEmailVerified: true // Admin doesn't need email verification
     });
 
     console.log('✅ Admin user created successfully!');
