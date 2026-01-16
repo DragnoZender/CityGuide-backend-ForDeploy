@@ -19,6 +19,7 @@ const Place = require('./models/Place');
 const Favorite = require('./models/Favorite');
 const PlaceSubmission = require('./models/PlaceSubmission');
 const PlaceUpdate = require('./models/PlaceUpdate');
+const Review = require('./models/Review');
 
 // Import Email Service
 const { sendOTPEmail } = require('./utils/emailService');
@@ -1247,7 +1248,6 @@ app.patch('/api/admin/submissions/:id', authenticateToken, adminMiddleware, asyn
         contactNumber: submission.contactNumber,
         website: submission.website,
         ownerId: submission.submittedBy, // Set owner
-        reviews: [],
         totalReviews: 0,
         averageRating: 0 // No rating until first review
       });
@@ -1469,6 +1469,9 @@ app.delete('/api/admin/places/:id', authenticateToken, adminMiddleware, async (r
     // Also delete related favorites
     await Favorite.deleteMany({ placeId: req.params.id });
     
+    // Also delete related reviews
+    await Review.deleteMany({ placeId: req.params.id });
+    
     res.json({
       success: true,
       message: 'Place deleted successfully'
@@ -1612,9 +1615,10 @@ app.post('/api/places/:id/reviews', authenticateToken, async (req, res) => {
     }
     
     // Check if user already reviewed
-    const existingReview = place.reviews.find(
-      review => review.userId.toString() === req.user.userId
-    );
+    const existingReview = await Review.findOne({
+      placeId: placeId,
+      userId: req.user.userId
+    });
     
     if (existingReview) {
       return res.status(400).json({
@@ -1626,18 +1630,19 @@ app.post('/api/places/:id/reviews', authenticateToken, async (req, res) => {
     // Get user info
     const user = await User.findById(req.user.userId);
     
-    // Add review
-    place.reviews.push({
+    // Create review
+    const review = await Review.create({
+      placeId: placeId,
       userId: req.user.userId,
       userName: user.name,
       rating: parseInt(rating),
-      comment: comment.trim(),
-      createdAt: new Date()
+      comment: comment.trim()
     });
     
-    // Update average rating and total reviews
-    place.totalReviews = place.reviews.length;
-    const totalRating = place.reviews.reduce((sum, review) => sum + review.rating, 0);
+    // Update place statistics
+    const allReviews = await Review.find({ placeId: placeId });
+    place.totalReviews = allReviews.length;
+    const totalRating = allReviews.reduce((sum, review) => sum + review.rating, 0);
     place.averageRating = totalRating / place.totalReviews;
     place.rating = place.averageRating; // Update main rating field
     
@@ -1645,10 +1650,15 @@ app.post('/api/places/:id/reviews', authenticateToken, async (req, res) => {
     
     console.log('✅ Review added successfully');
     
+    // Return place with reviews for backward compatibility
+    const reviews = await Review.find({ placeId: placeId }).sort({ createdAt: -1 });
+    const placeData = place.toObject();
+    placeData.reviews = reviews;
+    
     res.json({
       success: true,
       message: 'Review added successfully',
-      data: place
+      data: placeData
     });
   } catch (error) {
     console.error('❌ Add review error:', error);
@@ -1671,10 +1681,13 @@ app.get('/api/places/:id/reviews', authenticateToken, async (req, res) => {
       });
     }
     
+    // Get reviews from Review collection
+    const reviews = await Review.find({ placeId: req.params.id }).sort({ createdAt: -1 });
+    
     res.json({
       success: true,
       data: {
-        reviews: place.reviews,
+        reviews: reviews,
         totalReviews: place.totalReviews,
         averageRating: place.averageRating
       }
@@ -1720,8 +1733,11 @@ app.post('/api/places/:placeId/reviews/:reviewId/reply', authenticateToken, asyn
       });
     }
     
-    // Find the review
-    const review = place.reviews.id(reviewId);
+    // Find the review in Review collection
+    const review = await Review.findOne({
+      _id: reviewId,
+      placeId: placeId
+    });
     
     if (!review) {
       return res.status(404).json({
@@ -1734,14 +1750,19 @@ app.post('/api/places/:placeId/reviews/:reviewId/reply', authenticateToken, asyn
     review.ownerReply = reply.trim();
     review.ownerReplyAt = new Date();
     
-    await place.save();
+    await review.save();
     
     console.log('✅ Owner reply added successfully');
+    
+    // Return place with reviews for backward compatibility
+    const reviews = await Review.find({ placeId: placeId }).sort({ createdAt: -1 });
+    const placeData = place.toObject();
+    placeData.reviews = reviews;
     
     res.json({
       success: true,
       message: 'Reply added successfully',
-      data: place
+      data: placeData
     });
   } catch (error) {
     console.error('❌ Add reply error:', error);
@@ -1775,6 +1796,9 @@ app.delete('/api/my-places/:id', authenticateToken, async (req, res) => {
     
     // Also delete related favorites
     await Favorite.deleteMany({ placeId: placeId });
+    
+    // Also delete related reviews
+    await Review.deleteMany({ placeId: placeId });
     
     console.log('✅ Place deleted successfully by owner');
     

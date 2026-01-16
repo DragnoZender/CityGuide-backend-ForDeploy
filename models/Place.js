@@ -47,39 +47,6 @@ const placeSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  reviews: [{
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    userName: {
-      type: String,
-      required: true
-    },
-    rating: {
-      type: Number,
-      required: true,
-      min: 1,
-      max: 5
-    },
-    comment: {
-      type: String,
-      required: true
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now
-    },
-    ownerReply: {
-      type: String,
-      default: null
-    },
-    ownerReplyAt: {
-      type: Date,
-      default: null
-    }
-  }],
   totalReviews: {
     type: Number,
     default: 0
